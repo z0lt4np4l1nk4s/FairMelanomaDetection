@@ -1,0 +1,14 @@
+numpy
+pandas
+Pillow
+torch
+torchvision
+scikit-learn
+opencv-python
+albumentations
+tqdm
+matplotlib
+fairlearn
+segmentation_models_pytorch
+scikit-image
+requests

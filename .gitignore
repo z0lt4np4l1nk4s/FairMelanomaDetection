@@ -1,0 +1,64 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Environment files
+.env
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook runtime files
+*.nbconvert.ipynb
+*.nbconvert.*
+*.nb.html
+
+# VS Code settings (optional)
+.vscode/
+
+# macOS and system files
+.DS_Store
+Thumbs.db
+
+# Python packaging
+*.egg
+*.egg-info/
+dist/
+build/
+*.manifest
+*.spec
+
+# Pipenv
+Pipfile.lock
+
+# Pyright or mypy cache
+.mypy_cache/
+.pyright/
+
+# Coverage reports
+htmlcov/
+coverage.xml
+*.cover
+*.py,cover
+.cache
+
+# Logs
+*.log
+
+# Test results
+.junit.xml
+
+# IPython history
+.ipython/
+.history
+
+# Notebooks output (optional, if you want to exclude output cells)
+# *.ipynb  <-- Uncomment to ignore all notebooks (not usually recommended)
+
