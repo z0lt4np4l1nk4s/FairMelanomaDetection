@@ -2,11 +2,36 @@
 
 This project implements a deep learning pipeline for detecting melanoma in dermoscopic images, with a strong emphasis on achieving *fair and robust performance across diverse skin tones*. Developed for the LUMEN Data Science 2024/25 competition.
 
+## Table of Contents
+- [Core Idea & Pipeline](#core-idea--pipeline)
+- [Key Features & Techniques](#key-features--techniques)
+- [Preprocessing Components](#preprocessing-components)
+    - [Skin Tone Classifier](#skin-tone-classifier)
+    - [Lesion Cropper](#lesioncropper)
+    - [Hair Removal](#hairremoval)
+- [Dataset Insights & Challenges](#dataset-insights--challenges)
+- [Data Augmentation Strategy](#dataaugmentation-strategy)
+    - [Classification (Albumentations pipeline)](#classification-albumentations-pipeline)
+    - [Segmentation (custom OpenCV pipeline)](#segmentationcustom-opencv-pipeline)
+- [Segmentation Model (Lesion Localization)](#segmentation-model-lesionlocalization)
+- [Classification Model (Melanoma Prediction)](#classification-model-melanomaprediction)
+    - [Training recipe](#training-recipe)
+- [Datasets & Balancing](#datasets--balancing)
+- [Performance Highlights (Validation Set)](#performance-highlights-validation-set)
+- [Getting Started](#getting-started)
+    - [1. Environment Setup](#1-environment-setup)
+    - [2. Data Preparation](#2-data-preparation)
+    - [3. Training the Model](#3-training-the-model)
+    - [4. Making Predictions](#4-making-predictions)
+- [Project Structure](#project-structure)
+- [Other collaborators](#other-collaborators)
+
+
 ## Core Idea & Pipeline
 
 Our solution uses a *two-stage approach*:
-1. **Segmentation:** A U-Net model (ResNet34 backbone) first localizes the skin lesion within the image. This helps the subsequent classifier focus on the most relevant area.
-2. **Classification:** An EfficientNet-B4 based model then classifies the segmented lesion as malignant (melanoma) or benign.
+1. **Segmentation:** A **U-Net model** (ResNet34 backbone) first localizes the skin lesion within the image. This helps the subsequent classifier focus on the most relevant area.
+2. **Classification:** An **EfficientNet-B4** based model then classifies the segmented lesion as malignant (melanoma) or benign.
 
 A custom *skin tone classification* module (based on background image brightness) is integrated to enable fairness evaluation and targeted data balancing.
 
@@ -35,6 +60,189 @@ A custom *skin tone classification* module (based on background image brightness
     *   Automatic Mixed Precision (AMP)
     *   Dynamic threshold optimization on validation data
 
+---
+
+## Preprocessing Components
+
+### Skin Tone Classifier
+
+After each image is segmented, we mask‐out the lesion and **estimate the wearer’s skin tone directly from the surrounding skin pixels**.  We compute the median brightness in CIELAB *L* space and assign the image to one of **five empirically‑derived tone bins:**
+
+|  ID  | Tone label   |
+| ---- | ------------ |
+| 0    | Very light   |
+| 1    | Light        |
+| 2    | Medium‑light |
+| 3    | Medium       |
+| 4    | Dark         |
+
+This approach avoids training an extra network (and the additional bias that could accompany it) while still giving us a strong fairness signal for sampling, model monitoring and per‑group reporting.  It is fast and deterministic, so the same image will always be assigned the same tone.  The skin tone distribution informed both our data‑balancing strategy and the fairness metrics reported in the paper.
+
+![Skin tone distribution](assets/skin_tone_distribution.jpg)
+
+### Lesion Cropper
+
+- **Purpose** – Standardizes lesion-focused inputs for downstream classification by automatically isolating the lesion area in dermoscopic images.
+- **How it works**
+    1. **Segmentation-based detection**: A pretrained model predicts a lesion mask.
+    2. **Post-processing**: Morphological cleaning + small-component filtering remove artifacts.
+    3. **Adaptive cropping**:
+        - If the lesion is too large or no reliable mask exists → keep full image.
+        - Otherwise → extract a bounding box around the mask, add a configurable margin, pad to square, and resize to the target resolution.
+    4. **Image enhancement**: CLAHE and gamma correction boost contrast; dilation expands the mask slightly so surrounding context isn’t lost.
+- **Benefits** – Delivers uniform, context-preserving crops that reduce background bias and guard against missed lesion edges, improving consistency and generalization across the dataset.
+
+**Figure 1 — Successful crop**
+
+![Lesion Cropper – successful crop](assets/lesion_cropper_successful.jpg)
+
+**Figure 2 — Partial crop (mask too big, falls back to full frame)**
+
+![Lesion Cropper – partial crop](assets/lesion_cropper_partial.jpg)
+
+**Figure 3 — Failed crop (no valid mask detected)**
+
+![Lesion Cropper – failed crop](assets/lesion_cropper_failure.jpg)
+
+
+
+### Hair Removal
+
+Dermoscopic photographs frequently contain dark, filament‑shaped hair artifacts that can occlude lesions and confuse the model.  We adopt a **classical black‑hat + inpainting pipeline** ([adapted from V. Parsaniya’s popular Kaggle notebook](https://www.kaggle.com/code/vatsalparsaniya/melanoma-hair-remove)):
+
+1. Convert to grayscale and apply a morphological black‑hat filter with a 7×7 structuring element to highlight thin dark lines.
+2. Threshold the response to obtain a binary hair mask; remove very small blobs to avoid erasing legitimate structure.
+3. Use the mask with Telea inpainting (OpenCV) to reconstruct the underlying skin texture.
+
+Because it is purely image‑processing based, the routine runs quickly on CPU and introduces no additional trainable parameters.  Combined with lesion cropping it yields noticeably cleaner inputs and measurably improves recall on heavily haired images.
+
+![Class imbalance](assets/hair_remover.jpg)
+
+---
+
+## Dataset Insights & Challenges
+
+Before any balancing, we performed an exploratory analysis on the combined ISIC (2016–2020) and Fitzpatrick17k images to understand **class prevalence, skin‑tone representation and common artefacts**:
+
+- **Class imbalance:** Malignant cases constituted only ≈22 % of the raw training pool, while some years (e.g. ISIC 2016) were as low as 19 %.
+- **Skin‑tone skew:** > 70 % of the images fell into the two lightest skin tone categories (0 & 1) and < 0.5 % into the darkest category (4).  This motivated targeted up‑sampling and the inclusion of 127 Fitzpatrick17k dark‑tone images.
+- **Typical artefacts:** air bubbles, glare from liquid immersion, ruler/marker overlays, vignetting, synthetic colour‑checker patches and of course dense hair.  These observations directly informed the augmentation and cleaning steps below.
+
+**Class imbalance**
+
+![Class imbalance](assets/class_imbalance.jpg)
+
+**Example 1 — Lesion obfuscated by hair, 
+measurement overlay and immersion fluid**
+
+![Example1](assets/example1.jpg)
+
+**Example 2 — Presence of clinical markings and hair**
+
+![Example2](assets/example2.jpg)
+
+**Example 3 — Presence of immersion fluid and air 
+bubbles distorting the lesion view**
+
+![Example3](assets/example3.jpg)
+
+---
+
+## Data Augmentation Strategy
+
+### Classification (Albumentations pipeline)
+
+| Order | Transform                                                             | Purpose                         |  p       |
+| ----- | --------------------------------------------------------------------- | ------------------------------- | -------- |
+| 1     | `Transpose`                                                           | simulate camera rotation        | 0.5      |
+| 2–3   | `HorizontalFlip`, `VerticalFlip`                                      | left/right & up/down invariance | 0.5 each |
+| 4     | `RandomBrightnessContrast` (±0.2)                                     | robustness to exposure          | 0.5      |
+| 5     | `OneOf` ⟨`MotionBlur` / `MedianBlur` / `GaussianBlur` / `GaussNoise`⟩ | blur/noise robustness           | 0.7      |
+| 6     | `OneOf` ⟨`OpticalDistortion` / `GridDistortion` / `ElasticTransform`⟩ | non‑rigid warps                 | 0.7      |
+| 7     | `CLAHE` (clip = 4.0)                                                  | contrast boost (dermoscopes)    | 0.7      |
+| 8     | `HueSaturationValue` (±10/20/10)                                      | colour drift                    | 0.5      |
+| 9     | `Affine` (±5 % shift, 0.9–1.1 scale, ±15°)                            | small perspective changes       | 0.6      |
+| 10    | `Resize` → 512²                                                       | uniform batch size              | —        |
+| 11    | `CoarseDropout` (1–5 holes)                                           | occlusion & artefact robustness | 0.7      |
+| 12    | `Normalize` / `ToTensorV2`                                            | ImageNet stats + PyTorch        | —        |
+
+This blend of photometric, geometric and occlusion transforms proved more effective than heavier synthetic hair injection on the classification side (hair artefacts are largely removed earlier).
+
+### Segmentation (custom OpenCV pipeline)
+
+- **CLAHE**
+- **Random flips** (horizontal 0.5, vertical 0.3)
+- **RandomAffineCV** – ±15° rotation, ±5 % translation, 0.9–1.1 scale, ±5° shear
+- **RandomGaussianBlur** (p = 0.1)
+- **ColorJitter** (brightness/contrast ±0.15)
+- **RandomSyntheticHair** – draws 5–15 thin lines to harden the mask against occlusion
+- **Resize →** 512² (configurable via `SEGMENTATION_IMAGE_SIZE`)
+- **ToTensor**
+
+All transforms are paired image + mask operations to keep labels aligned.  The strong geometric jitter plus synthetic hair particularly improved boundary recall on hairy images.
+
+---
+
+## Segmentation Model (Lesion Localization)
+
+**Architecture**  – We train a **U‑Net** with a **ResNet‑34 encoder** pretrained on ImageNet, enhanced with **SCSE attention blocks** and decoder‑level dropout to sharpen focus on lesion pixels and reduce over-fit.
+
+**Loss & optimisation** – Pixel‑wise learning uses **Tversky Loss (α = 0.7, β = 0.3)** to give more weight to false‑negatives - the critical error in melanoma detection.  We employ **AdamW** with a **ReduceLROnPlateau** scheduler and **early stopping** once the validation loss flat‑lines for five epochs.
+
+**Progressive unfreezing** – Encoder layers remain frozen for the first three epochs, after which the entire encoder is unfrozen and fine-tuning begins with a lower learning rate.
+
+**Augmentation** – The custom OpenCV pipeline (flips, affine warp, synthetic hair, CLAHE, etc.) is applied identically to image–mask pairs, boosting boundary recall on occluded lesions.
+
+**Checkpointing** – The lowest‑loss epoch is saved to *checkpoints/segmentation_model.pth* for use by the lesion cropper.
+
+| Hyper‑parameter | Value     |
+| --------------- | --------- |
+| Input size      | 512 × 512 |
+| Batch size      | 16        |
+| Epochs          | 18        |
+| Optimiser       | AdamW     |
+| Loss            | Tversky   |
+
+![Segmentation pipeline](assets/segmentation_pipeline.jpg)
+
+---
+
+## Classification Model (Melanoma Prediction)
+
+**Architecture** – We fine‑tune **EfficientNet‑B4** (Noisy‑Student weights) created through `timm` with **30 % classifier dropout** and **15 % stochastic depth (DropPath)** inside the MBConv blocks; the stock head is replaced by `Dropout → Linear(1)` for single‑logit output .
+
+### Training recipe
+
+| Stage | Epochs | Layers trained           | LR added / max LR                              | Notes                                              |
+| ----- | ------ | ------------------------ | ---------------------------------------------- | -------------------------------------------------- |
+|  #1   |  1‑4   | classifier head only     | init 1 × 10⁻⁴(OneCycle warm‑up to 1.5 × 10⁻⁴)  | build discriminative features fast                 |
+|  #2   |  5‑8   | last MBConv block + head | new params @ 5 × 10⁻⁵                          | `add_new_params_to_optim` appends unfrozen weights |
+|  #3   |  9‑N   | full backbone            | new params @ 5 × 10⁻⁶ ; global LR set 1 × 10⁻⁵ | gentle full fine‑tune                              |
+
+**Optimiser** – **AdamW** (weight‑decay 1 × 10⁻³). A **OneCycleLR** schedule (max 1.5 × 10⁻⁴, 30 % warm‑up) governs the original parameters; unfrozen blocks receive progressively smaller LR tiers.
+
+**Loss** – **Focal Loss** with **α = 3.4, γ = 2.0** emphasises hard malignant examples .  A *Class‑Balanced Focal* variant is available for skin‑tone weighting during ablation studies.
+
+**Mixed Precision** – Training uses `torch.amp.autocast` + `GradScaler` for 2 × memory savings and \~20 % speed‑up .
+
+**Threshold search** – After every validation epoch we call **`find_best_threshold_balanced`** to maximise F1 while equalising recall across tone groups; the chosen cut‑off (≈ 0.42‑0.48) is saved with the checkpoint for reproducible inference .
+
+**Regularisation & Early‑stopping** – Classifier‑level dropout, stochastic depth, weight‑decay and a **10‑epoch patience** early‑stop guard against over‑fit .
+
+| Hyper‑parameter   | Value                    |
+| ----------------- | ------------------------ |
+| Input size        | 512 × 512                |
+| Batch size        | 32                       |
+| Max LR (OneCycle) | 1.5 × 10⁻⁴               |
+| Epochs (cap)      | 30 (early‑stop ≤ 20)     |
+| Loss              | Focal (α = 3.4, γ = 2.0) |
+| AMP               | yes                      |
+
+![Classification pipeline](assets/classification_pipeline.jpg)
+
+---
+
+
 ## Datasets & Balancing
 
 *   **Sources:** ISIC 2016, 2017, 2019, 2020, and 127 images from Fitzpatrick17k (all categorized as darkest skin tone)
@@ -46,7 +254,7 @@ A custom *skin tone classification* module (based on background image brightness
 *   **Validation Set:** Maintained a distribution similar to the original data to reflect real-world scenarios
     *   Example 'Validation': 8,974 samples | 22.52% Malignant
 
-![Skin tone distribution](assets/skin_tone_distribution.jpg)
+![Skin tone distribution comparison](assets/skin_tone_distribution_comparison.jpg)
 
 ## Performance Highlights (Validation Set)
 
