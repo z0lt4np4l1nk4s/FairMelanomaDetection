@@ -398,3 +398,4 @@ Special thanks to everyone who contributed during the competition:
 - [Lovro Barić](https://github.com/LoVrO312)
 - [Lorena Đaković](https://github.com/lorka1)
 - [Lara Slišković](https://github.com/lsliskov)
+- [Zoltan Palinkaš](https://github.com/z0lt4np4l1nk4s)
