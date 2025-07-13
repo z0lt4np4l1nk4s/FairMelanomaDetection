@@ -1,6 +1,6 @@
 # Fair Melanoma Detection
 
-This project implements a deep learning pipeline for detecting melanoma in dermoscopic images, with a strong emphasis on achieving *fair and robust performance across diverse skin tones*. Developed for the LUMEN Data Science 2024/25 competition.
+This project implements a deep learning pipeline for detecting melanoma in dermoscopic images, with a strong emphasis on achieving fair and robust performance across diverse skin tones. Developed for the LUMEN Data Science 2024/25 competition, the project was selected among the top 7 teams and invited to the finals. Although we did not place in the top ranks in the end, being a finalist highlights the strength and potential of our approach.
 
 ## Table of Contents
 - [Core Idea & Pipeline](#core-idea--pipeline)
@@ -203,6 +203,11 @@ All transforms are paired image + mask operations to keep labels aligned.  The
 | Optimiser       | AdamW     |
 | Loss            | Tversky   |
 
+### Traning time
+Approximate durations:
+- Preprocessing (mask preparation and resizing): ~15 minutes
+- U-Net model training: ~30 minutes
+
 ![Segmentation pipeline](assets/segmentation_pipeline.jpg)
 
 ---
@@ -237,6 +242,11 @@ All transforms are paired image + mask operations to keep labels aligned.  The
 | Epochs (cap)      | 30 (early‑stop ≤ 20)     |
 | Loss              | Focal (α = 3.4, γ = 2.0) |
 | AMP               | yes                      |
+
+### Training Time
+Approximate durations:
+- Preprocessing (tone estimation, cropping, hair removal): ~3 hours
+- EfficientNet-B4 training (including all stages): ~8 hours
 
 ![Classification pipeline](assets/classification_pipeline.jpg)
 
