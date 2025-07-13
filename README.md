@@ -205,8 +205,8 @@ All transforms are paired image + mask operations to keep labels aligned.  The
 
 ### Traning time
 Approximate durations:
-- Preprocessing (mask preparation and resizing): ~15 minutes
-- U-Net model training: ~30 minutes
+- Preprocessing (mask preparation and resizing): **~15 minutes**
+- U-Net model training: **~30 minutes**
 
 ![Segmentation pipeline](assets/segmentation_pipeline.jpg)
 
@@ -245,8 +245,8 @@ Approximate durations:
 
 ### Training Time
 Approximate durations:
-- Preprocessing (tone estimation, cropping, hair removal): ~3 hours
-- EfficientNet-B4 training (including all stages): ~8 hours
+- Preprocessing (tone estimation, cropping, hair removal): **~3 hours**
+- EfficientNet-B4 training (including all stages): **~8 hours**
 
 ![Classification pipeline](assets/classification_pipeline.jpg)
 
