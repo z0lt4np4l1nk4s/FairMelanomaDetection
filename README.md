@@ -203,7 +203,7 @@ All transforms are paired image + mask operations to keep labels aligned.  The
 | Optimiser       | AdamW     |
 | Loss            | Tversky   |
 
-### Traning time
+### Training time
 Approximate durations:
 - Preprocessing (mask preparation and resizing): **~15 minutes**
 - U-Net model training: **~30 minutes**
